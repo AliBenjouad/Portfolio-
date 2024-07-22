@@ -141,40 +141,47 @@ def download_from_url(url):
 
 @bp.route("/transcribe", methods=["POST"])
 def transcribe_route():
-    """Handle the transcription process."""
+    """
+    Handle POST requests for transcription by accepting either a direct file upload or a video URL.
+    After the file is obtained, it is transcribed, and results are processed to extract and store embeddings.
+    """
+
     logging.info("Starting the transcription process.")
     response_data = {}
 
     try:
-        file = request.files.get("file")
-        video_url = request.form.get("videoUrl")
-        file_path = None  # Initialize file_path variable
+        file = request.files.get("file")  # Attempt to retrieve a file from the POST request
+        video_url = request.form.get("videoUrl")  # Check if a video URL is provided in the form data
+        file_path = None  # Initialize file_path variable to store the path of the downloaded or uploaded file
 
         if video_url:
+            # If a video URL is provided, log this and attempt to download the video
             logging.info(f"Received video URL for transcription: {video_url}")
-            file_path = download_from_url(video_url)
+            file_path = download_from_url(video_url)  # Use the function to download video
             if not file_path:
+                # If the video cannot be downloaded, log and raise an error
                 logging.error("Failed to download video from provided URL.")
                 raise ValueError("Failed to download video from provided URL.")
             logging.info(f"Video downloaded successfully: {file_path}")
 
         elif file and allowed_file(file.filename):
+            # If a file is uploaded and is of allowed type, secure and save the file
             filename = secure_filename(file.filename)
             file_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
             file.save(file_path)
             logging.info(f"File uploaded and saved: {file_path}")
 
         else:
+            # If no valid input is provided, log an error and raise a ValueError
             logging.error("Invalid file type or no file provided.")
             raise ValueError("Invalid file type or no file provided.")
 
         if file_path:
-            # Initialize Transcribe with additional parameters
+            # Proceed with transcription if a valid file path exists
+            # Initialize Transcribe with configurations such as model size and compute type
             model_size_or_path = "base"
-            device = "cpu"  # Consider "cuda" for GPU acceleration if available
-            compute_type = (
-                "default"  # Adjust based on your needs or application configuration
-            )
+            device = "cpu"  # Using CPU; consider "cuda" for GPU if available
+            compute_type = "default"
 
             transcriber = Transcribe(
                 file_path,
@@ -188,23 +195,20 @@ def transcribe_route():
             )
 
             if transcript_segments:
-                transcript_text = "\n".join(
-                    [seg["text"] for seg in transcript_segments]
-                )
+                # If transcription produces segments, concatenate them and store in session
+                transcript_text = "\n".join([seg["text"] for seg in transcript_segments])
                 session["transcript_segments"] = transcript_segments
                 response_data["transcript"] = transcript_text
-                # Access embedding_storage_instance from current_app
+                # Assuming embedding storage is initialized in the current_app
                 embedding_storage = current_app.embedding_storage
                 embedding_storage.store_transcription(transcript_segments)
-                logging.info(
-                    "Embeddings for transcription segments have been generated and stored."
-                )
+                logging.info("Embeddings for transcription segments have been generated and stored.")
 
             else:
+                # Handle cases where transcription is technically successful but returns no content
                 logging.warning("Transcription successful but no content extracted.")
-                response_data["error"] = (
-                    "Transcription successful but no content extracted."
-                )
+                response_data["error"] = "Transcription successful but no content extracted."
+
         else:
             logging.error("No file path available for transcription.")
             response_data["error"] = "No file path available for transcription."
@@ -212,19 +216,23 @@ def transcribe_route():
         return jsonify(response_data)
 
     except ValueError as ve:
+        # Handle specific exceptions like ValueError separately for more precise error response
         logging.error(f"Error during transcription process: {ve}")
         response_data["error"] = str(ve)
         return jsonify(response_data), 400
 
     except Exception as e:
+        # Catch all other unexpected exceptions, log them, and return a server error
         logging.error(f"Unexpected error during transcription: {e}", exc_info=True)
         response_data["error"] = "An unexpected error occurred."
         return jsonify(response_data), 500
 
     finally:
+        # Ensure that any temporary file used during the process is cleaned up
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
             logging.info("Temporary file deleted.")
+
 
 @bp.route("/ask", methods=["POST"])
 def ask():
