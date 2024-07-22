@@ -236,19 +236,25 @@ def transcribe_route():
 
 @bp.route("/ask", methods=["POST"])
 def ask():
-    """Handle queries to the GPT model."""
+    """
+    Handle POST requests to the '/ask' endpoint by processing queries sent to a GPT model.
+    This function retrieves the query, enriches it with context from the session's conversation history,
+    sends it to the GPT model, and appends the model's response to the conversation history.
+    """
+
     logging.info("Received a request to '/ask' endpoint.")
-    gpt_integration = current_app.gpt_integration
-    data = request.get_json()
-    query = data.get("query") if data else None
+    gpt_integration = current_app.gpt_integration  # Retrieve GPT integration object from the current app context
+    data = request.get_json()  # Parse JSON data from the request
+    query = data.get("query") if data else None  # Extract 'query' from data if available
 
     if not query:
+        # Log an error and return a response if no query is provided
         logging.error("No query provided in the request.")
         return jsonify({"error": "No query provided"}), 400
     else:
         logging.info("Query received: %s", query)
 
-    # Ensure conversation_history exists in the session
+    # Ensure conversation_history exists in the session to maintain context
     if "conversation_history" not in session:
         logging.debug("Initializing 'conversation_history' in session.")
         session["conversation_history"] = []
@@ -260,34 +266,42 @@ def ask():
 
     try:
         logging.debug("Attempting to enrich query context and send to GPT.")
-        # It's now safe to get 'conversation_history' because we ensured its existence above
+        # Call the GPT integration's handle_query method to process the query
         response_text, metadata = gpt_integration.handle_query(
             session["conversation_history"], query
         )
-        # Append the assistant's response to the conversation history
+        # Append the response to the conversation history
         session["conversation_history"].append(
             {"role": "assistant", "content": response_text}
         )
-        # Ensure changes to session['conversation_history'] are saved
+        # Mark the session as modified to ensure changes are saved
         session.modified = True
         logging.info("GPT response appended to conversation history.")
         return jsonify({"response": response_text})
     except Exception as e:
+        # Handle any exceptions that occur and log them
         logging.error("Failed to process the query: %s", e, exc_info=True)
         return jsonify({"error": "Error processing your query"}), 500
 
 @bp.route("/reset_conversation", methods=["POST"])
 def reset_conversation():
-    """Reset the conversation history."""
-    session.clear()
+    """
+    Reset the conversation history by clearing the session.
+    This is useful for starting a new conversation without previous context.
+    """
+    session.clear()  # Clear all data in the session
     return jsonify({"success": True})
 
 def initialize_components(app_config):
-    """Initialize components and store in the application context."""
-    embedding_storage = EmbeddingStorage()
+    """
+    Initialize components like embedding storage and GPT integration,
+    and store them in the application context for global access.
+    This function is typically called during app startup.
+    """
+    embedding_storage = EmbeddingStorage()  # Initialize embedding storage
     gpt_integration = GPTIntegration(
         embedding_storage=embedding_storage,
-        engine_id=app_config.get("GPT_ENGINE_ID", "gpt-3.5-turbo"),
+        engine_id=app_config.get("GPT_ENGINE_ID", "gpt-3.5-turbo"),  # Use GPT-3.5 by default, can be configured
     )
-    current_app.gpt_integration = gpt_integration  # Store gpt_integration in current_app for global access
+    current_app.gpt_integration = gpt_integration  # Store GPT integration in current_app for global access
     return embedding_storage, gpt_integration
