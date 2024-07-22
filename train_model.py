@@ -11,13 +11,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CustomDataset(Dataset):
+    """
+    A custom dataset class that preprocesses and tokenizes data for BERT.
+    """
+
     def __init__(self, data):
         logger.info("Initializing the CustomDataset.")
         self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         self.encodings = []
         self.labels = []
 
-        # Group data by sentence for tokenization
+        # Group data by sentence to prepare for tokenization
         try:
             grouped = data.groupby("sentence").apply(lambda x: x.reset_index(drop=True)).groupby(level=0, as_index=False)
             logger.info("Data grouped by sentence successfully.")
@@ -32,7 +36,7 @@ class CustomDataset(Dataset):
                 logger.info(f"Tokenizing sentence: {sentence}")
                 logger.debug(f"Words: {words}")
 
-                # Ensure words are in the correct format
+                # Check that all words are strings to ensure proper tokenization
                 if not all(isinstance(word, str) for word in words):
                     logger.error(f"Invalid format for words in sentence: {sentence}. Words: {words}")
                     continue
@@ -45,7 +49,7 @@ class CustomDataset(Dataset):
                 logger.error(f"Error tokenizing sentence {sentence}: {e}")
                 continue
 
-            # Align labels
+            # Align labels with tokens, ignoring subword tokens
             try:
                 word_ids = tokenized_inputs.word_ids(batch_index=0)
                 label_ids = [-100 if word_id is None else labels[word_id] for word_id in word_ids]
@@ -59,13 +63,18 @@ class CustomDataset(Dataset):
         logger.info("CustomDataset initialized successfully.")
 
     def __getitem__(self, idx):
+        """ Returns a single tokenized input by index. """
         item = {key: torch.tensor(val) for key, val in self.encodings[idx].items()}
         return item
 
     def __len__(self):
+        """ Returns the total number of sentences in the dataset. """
         return len(self.encodings)
 
 def compute_metrics(pred):
+    """
+    Calculate precision, recall, f-score, and accuracy from predictions.
+    """
     logger.info("Computing metrics.")
     try:
         labels = pred.label_ids
@@ -88,11 +97,14 @@ def compute_metrics(pred):
         raise
 
 def train_model():
+    """
+    Train the BERT model with specified datasets and configuration.
+    """
     logger.info("Starting model training.")
 
+    # Define paths for training and validation data
     train_data_path = 'model/data/preprocessed_train_data.csv'
     valid_data_path = 'model/data/preprocessed_valid_data.csv'
-    test_data_path = 'model/data/preprocessed_test_data.csv'
 
     try:
         logger.info(f"Loading training data from {train_data_path}.")
@@ -118,6 +130,7 @@ def train_model():
         logger.error(f"Error loading BERT model: {e}")
         raise
 
+    # Training arguments
     training_args = TrainingArguments(
         output_dir='./model/trained_models/results',
         num_train_epochs=3,
