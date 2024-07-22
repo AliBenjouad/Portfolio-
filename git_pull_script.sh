@@ -1,5 +1,7 @@
 #!/bin/bash
-
+#Experimental script in .sh to automate the process of automating the github interactions (pulling version)
+# It is succesful but needs to be refined for more accurate control
+# This script of course requires for git configurations to be properly setup and defined 
 # Function to log messages
 log_message() {
     echo "[Git Script]: $1"
@@ -14,7 +16,7 @@ is_git_repo() {
     fi
 }
 
-# Function to initialize a new git repository
+# Function to initialize a new git repository in case
 initialize_git_repo() {
     local dir_name
     dir_name=$(basename "$1")
