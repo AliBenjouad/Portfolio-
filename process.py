@@ -1,12 +1,6 @@
 from flask import (
-    Blueprint,
-    request,
-    jsonify,
-    render_template,
-    redirect,
-    url_for,
-    session,
-    flash,
+    Blueprint, request, jsonify, render_template, redirect, url_for,
+    session, flash, current_app
 )
 from werkzeug.utils import secure_filename
 import os
@@ -27,34 +21,36 @@ import tempfile
 from transcribe import Transcribe
 from gpt_integration import GPTIntegration
 from EmbeddingStorage import EmbeddingStorage
-from flask import current_app
 
-
-# Configure logging
+# Configure logging for debugging and tracking events within the application
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-TIMEOUT = 1800
+# Constants
+TIMEOUT = 1800  # Timeout for session data (e.g., transcription) in seconds
+ALLOWED_EXTENSIONS = {"mp4", "mp3", "wav", "pdf", "docx"}  # Define file types allowed for upload
 
-ALLOWED_EXTENSIONS = {"mp4", "mp3", "wav", "pdf", "docx"}
-
-
+# Utility function to check if a file's extension is allowed
 def allowed_file(filename):
+    """Check if the file's extension is among the allowed ones."""
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-# Initialize Blueprint
+# Initialize Blueprint for this module
 bp = Blueprint("process", __name__)
-
 
 @bp.route("/", methods=["GET", "POST"])
 def upload():
+    """
+    Route to handle file uploads. It allows for file uploads and displays the upload page.
+    Handles both GET (display page) and POST (process uploads) requests.
+    """
 
     if request.method == "GET":
-        # Clear previous transcription when the page is loaded
+        # On GET, clear any previous transcription data from the session for a fresh start
         session.pop("transcript_segments", None)
-    # Check if transcription data is outdated and reset if necessary
+
+    # Check and reset outdated transcription data
     if (
         "transcription_timestamp" in session
         and time.time() - session["transcription_timestamp"] > TIMEOUT
@@ -64,27 +60,25 @@ def upload():
         session["transcription_timestamp"] = time.time()
 
     if request.method == "POST":
-        # Handle file upload
+        # Handle POST request for file upload
         if "file" not in request.files:
-            flash("No file part")
+            flash("No file part")  # Flash message for missing file part
             return redirect(request.url)
         file = request.files["file"]
         if file.filename == "":
-            flash("No selected file")
+            flash("No selected file")  # Flash message for no file selected
             return redirect(request.url)
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
+            filename = secure_filename(file.filename)  # Secure the file name
             file_path = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-            file.save(file_path)
-            # Here you can add logic to process the file, e.g., transcribing audio
+            file.save(file_path)  # Save the file
             flash("File successfully uploaded and is being processed.")
-            # Redirect to the upload page again or to a different page to show the transcription
             return redirect(url_for("upload"))
         else:
-            flash("Invalid file type.")
+            flash("Invalid file type.")  # Flash message for invalid file type
             return redirect(request.url)
 
-    # For GET requests or initial page load
+    # For GET requests or initial page load, display any existing transcript data
     transcript_segments = session.get("transcript_segments", [])
     concatenated_transcript = " ".join(
         [segment["text"] for segment in transcript_segments]
@@ -98,47 +92,56 @@ def upload():
     )
 
 
-# Function to download content from URL
 def download_from_url(url):
-    # Attempt to download content with retry logic
-    retries = 3
+    """
+    Download content from a given URL with retry logic. It specifically handles YouTube URLs differently
+    from direct video links, attempting to download the best available stream for YouTube videos.
+    Retries up to three times before giving up if errors occur.
+    """
+
+    retries = 3  # Number of attempts to try downloading the file
     for attempt in range(retries):
         try:
-            filename = None
+            filename = None  # Initialize filename to None for each attempt
             if "youtube.com" in url or "youtu.be" in url:
-                # Process YouTube URLs
-                yt = YouTube(url)
+                # Check if the URL is a YouTube link and process accordingly
+                yt = YouTube(url)  # Create a YouTube object from the URL
                 stream = yt.streams.filter(
                     file_extension="mp4", progressive=True
-                ).first()
+                ).first()  # Get the best quality progressive 'mp4' stream
                 if stream:
-                    filename = tempfile.mktemp(prefix="download_", suffix=".mp4")
-                    stream.download(filename=filename)
+                    # If a valid stream is found, download it
+                    filename = tempfile.mktemp(prefix="download_", suffix=".mp4")  # Create a temporary file
+                    stream.download(filename=filename)  # Download the stream to the file
                 else:
+                    # Log error and skip to the next attempt if no valid stream is found
                     logging.error("No suitable stream found for YouTube URL")
-                    continue  # Try again
+                    continue
             else:
-                # Process other URLs (assuming direct video links)
+                # Handle non-YouTube URLs assumed to be direct video links
                 response = requests.get(url, stream=True)
-                response.raise_for_status()  # Will throw an exception for bad responses
-                filename = tempfile.mktemp(prefix="download_", suffix=".mp4")
+                response.raise_for_status()  # Check for HTTP request errors
+                filename = tempfile.mktemp(prefix="download_", suffix=".mp4")  # Create a temporary file
                 with open(filename, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                        f.write(chunk)  # Write the content to file in chunks
 
             if filename and os.path.exists(filename):
-                return filename  # Successfully downloaded file
+                # If the file is successfully downloaded and exists, return its path
+                return filename
             else:
+                # Log an error if the file does not exist after the download attempt
                 logging.error(f"Failed to download file on attempt {attempt + 1}")
         except Exception as e:
+            # Log any exceptions that occur during the download process
             logging.error(f"Attempt to download URL failed: {e}")
 
-    return None  # Failed to download after retries
+    return None  # Return None if all attempts fail
 
 
-# Route for transcription processing
 @bp.route("/transcribe", methods=["POST"])
 def transcribe_route():
+    """Handle the transcription process."""
     logging.info("Starting the transcription process.")
     response_data = {}
 
@@ -223,10 +226,9 @@ def transcribe_route():
             os.remove(file_path)
             logging.info("Temporary file deleted.")
 
-
-# Route for handling queries with GPT
 @bp.route("/ask", methods=["POST"])
 def ask():
+    """Handle queries to the GPT model."""
     logging.info("Received a request to '/ask' endpoint.")
     gpt_integration = current_app.gpt_integration
     data = request.get_json()
@@ -266,21 +268,18 @@ def ask():
         logging.error("Failed to process the query: %s", e, exc_info=True)
         return jsonify({"error": "Error processing your query"}), 500
 
-
-# Route to reset conversation history
 @bp.route("/reset_conversation", methods=["POST"])
 def reset_conversation():
+    """Reset the conversation history."""
     session.clear()
     return jsonify({"success": True})
 
-
 def initialize_components(app_config):
+    """Initialize components and store in the application context."""
     embedding_storage = EmbeddingStorage()
     gpt_integration = GPTIntegration(
         embedding_storage=embedding_storage,
         engine_id=app_config.get("GPT_ENGINE_ID", "gpt-3.5-turbo"),
     )
-    current_app.gpt_integration = (
-        gpt_integration  # Store gpt_integration in current_app for global access
-    )
+    current_app.gpt_integration = gpt_integration  # Store gpt_integration in current_app for global access
     return embedding_storage, gpt_integration
