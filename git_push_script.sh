@@ -1,5 +1,7 @@
 #!/bin/bash
-
+#Experimental script in .sh to automate the process of automating the github interactions (pulling version)
+# It is succesful but needs to be refined for more accurate control
+# This script of course requires for git configurations to be properly setup and defined 
 # Function to log messages
 log_message() {
     echo "[Git Script]: $1"
