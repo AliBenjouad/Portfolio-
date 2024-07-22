@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar Interface</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="/static/scripts.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Radar Interface</h1>
+        <div class="controls">
+            <div>
+                <label for="inputMaxRange">Set Max Range:</label>
+                <input type="number" id="inputMaxRange" value="80" min="10" max="400"> cm (up to 400 cm)
+                <button id="setMaxRange">Set Max Range</button>
+            </div>
+            <div>
+                <label for="inputAngle">Set Angle:</label>
+                <input type="number" id="inputAngle" value="90" min="0" max="360"> degrees
+                <button id="setAngle">Set Angle</button>
+            </div>
+            <button id="startScan">Start Scan</button>
+            <button id="startSweep">Start 180° Sweep</button> <!-- New button for sweep functionality -->
+        </div>
+        <div class="status">
+            <p>PCA9685 Status: {{ pca9685_status }}</p>
+            <p>HC-SR04 Status: {{ hcsr04_status }}</p>
+            <p id="status">Ready to scan.</p>
+        </div>
+        <canvas id="radar" width="400" height="400"></canvas>
+    </div>
+</body>
+</html>
